@@ -1,0 +1,2216 @@
+    <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OMIA Canvas</title>
+        <link rel="icon" href="omicon.png" />
+    <style>
+        html, body {
+          height: 100%;
+        }
+        body {
+          font-family: Arial, sans-serif;
+          background: #f4f6fa;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin: 0;
+          height: 100vh;
+        }
+        #toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-bottom: 10px;
+          align-items: center;
+        }
+        canvas {
+          background: white;
+          border-radius: 8px;
+          cursor: crosshair;
+          width: 100vw;
+          height: 100vh;
+          touch-action: none; /* allow custom gestures without browser interference */
+        }
+        button, select, input {
+          padding: 5px 8px;
+          font-size: 14px;
+        }
+        #topControls {
+          position: fixed;
+          top: 14px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 120;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 10px 14px;
+          border-radius: 14px;
+          border: 1px solid rgba(18, 28, 45, 0.16);
+          background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(249,251,255,0.93));
+          box-shadow: 0 10px 30px rgba(12, 21, 35, 0.15);
+          backdrop-filter: blur(8px);
+        }
+        #projectNameLabel {
+          font-size: 14px;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          color: #1b2638;
+          white-space: nowrap;
+        }
+        .statePickerWrap {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .statePickerLabel {
+          font-size: 12px;
+          font-weight: 600;
+          color: #44536b;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+        #viewDropdown {
+          min-width: 140px;
+          border: 1px solid #b8c5dc;
+          border-radius: 10px;
+          padding: 8px 34px 8px 12px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #1f2d44;
+          background: linear-gradient(180deg, #ffffff, #f3f7ff);
+          box-shadow: 0 1px 2px rgba(21, 34, 54, 0.08);
+          cursor: pointer;
+          outline: none;
+          appearance: none;
+          -webkit-appearance: none;
+          background-image: linear-gradient(45deg, transparent 50%, #4f678f 50%), linear-gradient(135deg, #4f678f 50%, transparent 50%);
+          background-position: calc(100% - 16px) calc(50% - 2px), calc(100% - 11px) calc(50% - 2px);
+          background-size: 5px 5px, 5px 5px;
+          background-repeat: no-repeat;
+        }
+        #viewDropdown:hover {
+          border-color: #89a0c5;
+        }
+        #viewDropdown:focus {
+          border-color: #3f6fc1;
+          box-shadow: 0 0 0 3px rgba(63, 111, 193, 0.18);
+        }
+        #omiconOverlay {
+          position: fixed;
+          bottom: 16px;
+          right: 16px;
+          z-index: 100;
+          width: 56px;
+          height: 56px;
+          pointer-events: none;
+          opacity: 0.85;
+        }
+        @media (max-width: 640px) {
+          #topControls {
+            width: calc(100% - 24px);
+            justify-content: space-between;
+            padding: 10px 12px;
+          }
+          #projectNameLabel {
+            max-width: 48%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .statePickerLabel {
+            display: none;
+          }
+          #viewDropdown {
+            min-width: 124px;
+          }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div id="topControls">
+  <div id="projectNameLabel">Project</div>
+  <div class="statePickerWrap">
+    <label class="statePickerLabel" for="viewDropdown">State</label>
+    <select id="viewDropdown" onchange="initAllShapes(this.value)">
+      <option value="mobile">Mobile</option>
+      <option value="desktop">Desktop</option>
+    </select>
+  </div>
+</div>
+
+<img id="omiconOverlay" src="omicon.png" alt="omicon" />
+
+<script>
+    const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      let mode = "pan";
+      let shape = "rect";
+      let lineWidth = 0.2;
+      const modeSelect = document.getElementById("mode");// pan, draw, move
+      const shapeSelect = document.getElementById("shape"); // rect, circle, line, text, image
+      const strokeColorInput = document.getElementById("strokeColor");// stroke color
+      const fillColorInput = document.getElementById("fillColor");// fill color
+      const textColorInput = document.getElementById("textColor");// text color
+      const lineWidthInput = document.getElementById("lineWidth");// line width
+      const radiusInput = document.getElementById("radius");// corner radius
+      const elevationInput = document.getElementById("elevation");// elevation
+    const textSizeInput = document.getElementById("textSize");// text size
+    const textContentInput = document.getElementById("textContent");// text content
+    const fontWeightSelect = document.getElementById("fontWeight");// font weight
+    const textAlignSelect = document.getElementById("textAlign");// text align
+    const radiusTLInput = document.getElementById("radiusTL");// radius top-left
+    const radiusTRInput = document.getElementById("radiusTR");// radius top-right
+    const radiusBRInput = document.getElementById("radiusBR");// radius bottom-right
+    const radiusBLInput = document.getElementById("radiusBL");// radius bottom-left
+    const clearBtn = document.getElementById("clearBtn");
+    const imageLoader = document.getElementById("imageLoader");
+    const imageFitSelect = document.getElementById('imageFit');
+    const replaceImageBtn = document.getElementById('replaceImageBtn');
+
+      // --- Context menu for shapes (right-click) ---
+      const shapeContextMenu = document.createElement('div');
+      shapeContextMenu.style.position = 'fixed';
+      shapeContextMenu.style.background = '#fff';
+      shapeContextMenu.style.border = '1px solid #ccc';
+      shapeContextMenu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+      shapeContextMenu.style.padding = '6px 0';
+      shapeContextMenu.style.display = 'none';
+      shapeContextMenu.style.zIndex = 9999;
+      shapeContextMenu.style.minWidth = '140px';
+      document.body.appendChild(shapeContextMenu);
+      let ignoreNextDocClick = false;
+
+      let contextTargetId = null;
+      function hideShapeContextMenu() {
+        shapeContextMenu.style.display = 'none';
+        contextTargetId = null;
+      }
+
+      function showShapeContextMenu(x, y, targetId, position = null) {
+        contextTargetId = targetId;
+        shapeContextMenu.innerHTML = '';
+        const mk = (label, cb) => {
+          const el = document.createElement('div');
+          el.textContent = label;
+          el.style.padding = '6px 12px';
+          el.style.cursor = 'pointer';
+          el.addEventListener('mouseenter', () => el.style.background = '#f3f6fb');
+          el.addEventListener('mouseleave', () => el.style.background = '');
+          el.addEventListener('click', (ev) => { ev.stopPropagation(); hideShapeContextMenu(); cb(); });
+          shapeContextMenu.appendChild(el);
+        };
+        shapeContextMenu.style.left = x + 'px';
+        shapeContextMenu.style.top = y + 'px';
+        shapeContextMenu.style.display = 'block';
+        // Avoid immediate hide from synthetic click following long press
+        ignoreNextDocClick = true;
+      }
+
+      document.addEventListener('click', (ev) => {
+        if (ignoreNextDocClick) {
+          ignoreNextDocClick = false;
+          return;
+        }
+        // Don't hide when clicking inside the menu
+        if (shapeContextMenu.contains(ev.target)) return;
+        hideShapeContextMenu();
+      });
+
+    // store shapes in a Map keyed by unique ids for stable lookup and easy updates
+    let shapesMap = new Map();
+    // zOrder stores shape ids in drawing order (back -> front)
+    let zOrder = [];
+      let shapeIdCounter = 1;
+      let shapeName = '';
+      function makeShapeId(type) {
+        // compact, unique id: type_timestamp_counter
+        const ts = Date.now().toString(36);
+        if(shapeName) type = shapeName;
+        return `${shapeName}_${ts}_${shapeIdCounter++}`;
+      }
+      // Z-order manipulation helpers (operate on zOrder array)
+      function bringForward(id) {
+        const idx = zOrder.indexOf(id);
+        if (idx === -1 || idx === zOrder.length - 1) return;
+        const item = zOrder.splice(idx, 1)[0];
+        zOrder.splice(idx + 1, 0, item);
+        drawAll();
+        updateDartWidgetOrder();
+      }
+      function sendBackward(id) {
+        const idx = zOrder.indexOf(id);
+        if (idx <= 0) return;
+        const item = zOrder.splice(idx, 1)[0];
+        zOrder.splice(idx - 1, 0, item);
+        drawAll();
+        updateDartWidgetOrder();
+       }
+      function bringToFront(id) {
+        const idx = zOrder.indexOf(id);
+        if (idx === -1 || idx === zOrder.length - 1) return;
+        zOrder.splice(idx, 1);
+        zOrder.push(id);
+        drawAll();
+        updateDartWidgetOrder();
+       }
+      function sendToBack(id) {
+        const idx = zOrder.indexOf(id);
+        if (idx <= 0) return;
+        zOrder.splice(idx, 1);
+        zOrder.unshift(id);
+        drawAll();
+        updateDartWidgetOrder();
+      }
+
+      function groupWidgets() {
+        let ids = [];
+        for (const el of groupSelection) {
+          ids.push(el);
+        }
+        groupSelection.clear();
+        selectionRect = null;
+        drawAll();
+      }
+
+      function deleteInDart(id) {
+      }
+
+      let drawing = false;
+      let moving = false;
+      let panning = false;
+      let resizing = false;
+
+      let selectingGroup = false;
+      let groupDragging = false;
+      let selectionRect = null; // { x, y, w, h } in world coords
+      let groupSelection = new Set(); // set of selected shape ids
+      let groupOrigPositions = new Map(); // id -> {x,y}
+      let groupLastMouse = null;
+
+      let startX, startY, offsetX, offsetY, selectedShape = null;
+      let uploadedImage = null;
+      // Default image (can be set to a URL or an uploaded file). Stored as an HTMLImageElement.
+      let defaultImage = new Image();
+      let defaultImageLoaded = false;
+      // A simple SVG placeholder as a default image (small, vector so it scales well)
+      const defaultImageDataUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100%" height="100%" fill="#ddd"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#888" font-size="20">Image</text></svg>');
+      defaultImage.onload = () => { defaultImageLoaded = true; };
+      defaultImage.src = defaultImageDataUrl;
+
+   // Return shapes whose bounding boxes intersect the given rect (world coords)
+      function pointInRect(px, py, minX, minY, maxX, maxY) {
+        return px >= minX && px <= maxX && py >= minY && py <= maxY;
+      }
+
+      // segment-segment intersection (excluding colinear overlap edge cases handled as intersects)
+      function segSegIntersects(x1,y1,x2,y2,x3,y3,x4,y4) {
+        function orient(ax,ay,bx,by,cx,cy){
+          return (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
+        }
+        const o1 = orient(x1,y1,x2,y2,x3,y3);
+        const o2 = orient(x1,y1,x2,y2,x4,y4);
+        const o3 = orient(x3,y3,x4,y4,x1,y1);
+        const o4 = orient(x3,y3,x4,y4,x2,y2);
+        if (o1 === 0 && pointOnSegment(x1,y1,x2,y2,x3,y3)) return true;
+        if (o2 === 0 && pointOnSegment(x1,y1,x2,y2,x4,y4)) return true;
+        if (o3 === 0 && pointOnSegment(x3,y3,x4,y4,x1,y1)) return true;
+        if (o4 === 0 && pointOnSegment(x3,y3,x4,y4,x2,y2)) return true;
+        return (o1 > 0) !== (o2 > 0) && (o3 > 0) !== (o4 > 0);
+      }
+
+      function pointOnSegment(x1,y1,x2,y2,px,py){
+        const minx = Math.min(x1,x2), maxx = Math.max(x1,x2);
+        const miny = Math.min(y1,y2), maxy = Math.max(y1,y2);
+        const cross = (px - x1)*(y2 - y1) - (py - y1)*(x2 - x1);
+        if (Math.abs(cross) > 1e-6) return false;
+        return px >= minx - 1e-6 && px <= maxx + 1e-6 && py >= miny - 1e-6 && py <= maxy + 1e-6;
+      }
+
+      function segmentIntersectsRect(sx1,sy1,sx2,sy2,minX,minY,maxX,maxY){
+        // If either endpoint inside rect, that's a vertex hit
+        if (pointInRect(sx1,sy1,minX,minY,maxX,maxY) || pointInRect(sx2,sy2,minX,minY,maxX,maxY)) return true;
+        // Check intersection with each rect edge
+        // rect edges: (minX,minY)-(maxX,minY), (maxX,minY)-(maxX,maxY), (maxX,maxY)-(minX,maxY), (minX,maxY)-(minX,minY)
+        if (segSegIntersects(sx1,sy1,sx2,sy2, minX,minY, maxX,minY)) return true;
+        if (segSegIntersects(sx1,sy1,sx2,sy2, maxX,minY, maxX,maxY)) return true;
+        if (segSegIntersects(sx1,sy1,sx2,sy2, maxX,maxY, minX,maxY)) return true;
+        if (segSegIntersects(sx1,sy1,sx2,sy2, minX,maxY, minX,minY)) return true;
+        return false;
+      }
+
+      function circleBoundaryIntersectsRect(cx,cy,r,minX,minY,maxX,maxY){
+        // Compute min distance from center to rect (closest point)
+        const closestX = Math.max(minX, Math.min(cx, maxX));
+        const closestY = Math.max(minY, Math.min(cy, maxY));
+        const dxMin = closestX - cx;
+        const dyMin = closestY - cy;
+        const minDist = Math.sqrt(dxMin*dxMin + dyMin*dyMin);
+        // Compute max distance from center to rect corners
+        const corners = [[minX,minY],[minX,maxY],[maxX,minY],[maxX,maxY]];
+        let maxDist = 0;
+        for (const [px,py] of corners){
+          const d = Math.hypot(px-cx, py-cy);
+          if (d > maxDist) maxDist = d;
+        }
+        // boundary intersects if radius is between minDist and maxDist (inclusive)
+        return (minDist <= r && r <= maxDist);
+      }
+
+      function shapeIntersectsByEdgeOrVertex(s, minX, minY, maxX, maxY){
+        if (!s) return false;
+        if (s.type === 'line'){
+          const x1 = s.x, y1 = s.y, x2 = s.x + (s.w || 0), y2 = s.y + (s.h || 0);
+          // endpoint vertex check or edge intersects
+          return segmentIntersectsRect(x1,y1,x2,y2,minX,minY,maxX,maxY);
+        }
+        if (s.type === 'circle'){
+          const r = Math.max(Math.abs(s.w || 0), Math.abs(s.h || 0)) / 2;
+          const cx = s.x + (s.w || 0) / 2;
+          const cy = s.y + (s.h || 0) / 2;
+          return circleBoundaryIntersectsRect(cx,cy,r,minX,minY,maxX,maxY);
+        }
+        // rect/text/image: check vertices first
+        const x0 = Math.min(s.x, s.x + (s.w || 0));
+        const y0 = Math.min(s.y, s.y + (s.h || 0));
+        const w = Math.abs(s.w || 0);
+        const h = Math.abs(s.h || 0);
+        const verts = [[x0,y0],[x0+w,y0],[x0,y0+h],[x0+w,y0+h]];
+        for (const [vx,vy] of verts) {
+          if (pointInRect(vx,vy,minX,minY,maxX,maxY)) return true;
+        }
+        // then check edges intersecting selection rect
+        // edges are the four sides
+        const x1 = x0, y1 = y0, x2 = x0 + w, y2 = y0 + h;
+        if (segmentIntersectsRect(x1,y1,x2,y1,minX,minY,maxX,maxY)) return true;
+        if (segmentIntersectsRect(x2,y1,x2,y2,minX,minY,maxX,maxY)) return true;
+        if (segmentIntersectsRect(x2,y2,x1,y2,minX,minY,maxX,maxY)) return true;
+        if (segmentIntersectsRect(x1,y2,x1,y1,minX,minY,maxX,maxY)) return true;
+        return false;
+      }
+
+      function getShapesInRect(minX, minY, maxX, maxY) {
+        const out = [];
+        for (let id of zOrder) {
+          const s = shapesMap.get(id);
+          if (!s) continue;
+          if (shapeIntersectsByEdgeOrVertex(s, minX, minY, maxX, maxY)) out.push(s);
+        }
+        return out;
+      }
+
+
+      // Helpers to change the default image at runtime
+      function setDefaultImageFromUrl(url) {
+        defaultImageLoaded = false;
+        defaultImage = new Image();
+        defaultImage.onload = () => { defaultImageLoaded = true; drawAll(); };
+        defaultImage.src = url;
+      }
+      function setDefaultImageFromFile(file) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          setDefaultImageFromUrl(evt.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+      let selectedForParenting = null; // Store shape selected for parenting
+      let resizeHandle = null;
+      const HANDLE_SIZE = 10;
+
+      // Viewport state
+      let viewport = {
+        x: 0,
+        y: 0,
+        zoom: 1,
+        minZoom: 0.1,
+        maxZoom: 10
+      };
+
+      // Make the canvas crisp (high-DPI)
+      function getMousePos(canvas, evt) {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const scaleX = (canvas.width / dpr) / rect.width;
+        const scaleY = (canvas.height / dpr) / rect.height;
+        return {
+          x: ((evt.clientX - rect.left) * scaleX - viewport.x) / viewport.zoom,
+          y: ((evt.clientY - rect.top) * scaleY - viewport.y) / viewport.zoom
+        };
+      }
+
+      // Convert world coordinates to screen coordinates
+      function worldToScreen(x, y) {
+        return {
+          x: x * viewport.zoom + viewport.x,
+          y: y * viewport.zoom + viewport.y
+        };
+      }
+
+      // Helper function to update shape position and its children
+      function moveShape(shape, newX, newY, shouldUpdate=true) {
+        // Calculate the movement delta
+        const dx = newX - shape.x;
+        const dy = newY - shape.y;
+
+        // Move the shape
+        shape.x = newX;
+        shape.y = newY;
+
+         updateFlutterWidgetAttr(shape, shouldUpdate);
+        // Move all children by the same delta
+        shape.children.forEach(child => {
+          moveShape(child, child.x + dx, child.y + dy, shouldUpdate);
+        });
+      }
+
+      function setupSharpCanvas(canvas, ctx) {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset any transforms
+        ctx.scale(dpr, dpr);
+      }
+      setupSharpCanvas(canvas, ctx);
+
+      // Keep canvas crisp on orientation/viewport changes
+      window.addEventListener('resize', () => {
+        setupSharpCanvas(canvas, ctx);
+        drawAll();
+      });
+
+      // Pinch-to-zoom state
+      let pinchZooming = false;
+      let lastPinchDist = 0;
+      let pinchCenterScreen = { x: 0, y: 0 };
+
+      // Long-press context menu state
+      let longPressTimer = null;
+      let longPressActive = false;
+      let currentTouchActive = false;
+      let longPressStart = { clientX: 0, clientY: 0 };
+      let currentTouchPoint = { clientX: 0, clientY: 0 };
+      let pendingPointerDown = false; // defer pointerDown for distinguishing tap vs long-press
+      const LONG_PRESS_MS = 400;
+      const LONG_PRESS_TOLERANCE = 25;
+      let suppressNextPointerUp = false;
+
+      function getTextLines(text, maxWidth, ctx) {
+        if (!text || maxWidth <= 0) return [];
+
+        const words = text.split(/\s+/);
+        if (words.length === 0) return [];
+
+        const lines = [];
+        let currentLine = '';
+
+        for (let i = 0; i < words.length; i++) {
+          const word = words[i];
+          // Handle long words that need breaking
+          if (ctx.measureText(word).width > maxWidth) {
+            // If we have content in currentLine, push it first
+            if (currentLine) {
+              lines.push(currentLine);
+              currentLine = '';
+            }
+            // Break the long word into characters
+            let partialWord = '';
+            for (let char of word) {
+              const testLine = partialWord + char;
+              if (ctx.measureText(testLine).width > maxWidth) {
+                if (partialWord) lines.push(partialWord);
+                partialWord = char;
+              } else {
+                partialWord += char;
+              }
+            }
+            if (partialWord) {
+              currentLine = partialWord;
+            }
+            continue;
+          }
+
+          // Try adding the word to current line
+          const testLine = currentLine ? currentLine + ' ' + word : word;
+          const testWidth = ctx.measureText(testLine).width;
+
+          if (testWidth <= maxWidth) {
+            currentLine = testLine;
+          } else {
+            if (currentLine) lines.push(currentLine);
+            currentLine = word;
+          }
+        }
+
+        // Don't forget the last line
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+
+        return lines;
+      }
+
+      canvas.addEventListener('dblclick', e => {
+        const pos = getMousePos(canvas, e);
+        const clickedShape = getShapeAt(pos.x, pos.y);
+
+        if (clickedShape && clickedShape.type === 'text') {
+          const newText = prompt('Edit text:', clickedShape.text);
+          if (newText !== null) {
+            clickedShape.text = newText;
+            drawAll();
+          }
+        }
+      });
+
+      // Right-click context menu on shapes
+      canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const pos = getMousePos(canvas, e);
+        const shape = getShapeAt(pos.x, pos.y);
+        if (!shape) {
+          hideShapeContextMenu();
+          return;
+        }
+        // select the shape
+        selectedShape = shape;
+        // show menu at mouse screen coords
+        showShapeContextMenu(e.clientX, e.clientY, shape._id, pos);
+      });
+
+
+      // Add mouse wheel zoom (zoom toward cursor)
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        // screen coordinates relative to canvas (CSS pixels)
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+
+        // world coordinates before zoom
+        const worldBeforeX = (screenX - viewport.x) / viewport.zoom;
+        const worldBeforeY = (screenY - viewport.y) / viewport.zoom;
+
+        const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+        viewport.zoom = Math.max(viewport.minZoom, Math.min(viewport.maxZoom, viewport.zoom * zoomDelta));
+
+        // adjust viewport so the world point under the cursor stays under the cursor
+        viewport.x = screenX - worldBeforeX * viewport.zoom;
+        viewport.y = screenY - worldBeforeY * viewport.zoom;
+
+        drawAll();
+      });
+
+      // Handle text size input updates
+      let defaultTextSize = 16;
+
+      // Text content / weight / alignment controls
+      let defaultFontWeight = 'normal';
+      let defaultTextAlign = 'left';
+
+      // Color controls: wire up and manage selected/default values
+      let strokeDefault = '#0066cc';
+      let fillDefault = '#ffffff';
+      let textDefault = '#000000';
+    let defaultImageFit = 'cover';
+
+
+
+
+
+      function drawGrid() {
+        const gridSize = 50;
+        const minX = -viewport.x / viewport.zoom;
+        const minY = -viewport.y / viewport.zoom;
+        const maxX = (canvas.width - viewport.x) / viewport.zoom;
+        const maxY = (canvas.height - viewport.y) / viewport.zoom;
+
+        ctx.strokeStyle = '#f0f0f0';
+        ctx.lineWidth = 1 / viewport.zoom;
+
+        // Draw vertical lines
+        for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(x, minY);
+          ctx.lineTo(x, maxY);
+          ctx.stroke();
+        }
+
+        // Draw horizontal lines
+        for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(minX, y);
+          ctx.lineTo(maxX, y);
+          ctx.stroke();
+        }
+      }
+
+      function drawResizeHandles(shape) {
+        if (!shape) return;
+        const handles = getResizeHandles(shape);
+        ctx.save();
+        ctx.fillStyle = '#0066cc';
+        handles.forEach(h => {
+          ctx.beginPath();
+          ctx.rect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE);
+          ctx.fill();
+        });
+        ctx.restore();
+      }
+
+      function getResizeHandles(shape) {
+        // Normalize the rectangle so width/height are positive and return the 4 corners
+        const left = Math.min(shape.x, shape.x + shape.w);
+        const top = Math.min(shape.y, shape.y + shape.h);
+        const width = Math.abs(shape.w);
+        const height = Math.abs(shape.h);
+        return [
+          { x: left, y: top, corner: 'nw' },
+          { x: left + width, y: top, corner: 'ne' },
+          { x: left, y: top + height, corner: 'sw' },
+          { x: left + width, y: top + height, corner: 'se' }
+        ];
+      }
+
+      function getHandleAt(x, y, shape) {
+        const handles = getResizeHandles(shape);
+        for (let h of handles) {
+          if (Math.abs(x - h.x) < (HANDLE_SIZE) && Math.abs(y - h.y) < ( HANDLE_SIZE)) {
+            return h;
+          }
+        }
+        return null;
+      }
+
+      // --- Pointer/touch helpers ---
+      function getPrimaryTouch(e) {
+        const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+        return t ? { clientX: t.clientX, clientY: t.clientY } : null;
+      }
+
+      function handlePointerDown(e, client) {
+        const pos = getMousePos(canvas, client || e);
+        const x = pos.x, y = pos.y;
+        const clickedShape = getShapeAt(x, y);
+
+        // Group selection mode: start marquee or start dragging selected group
+        if (mode === 'group') {
+          if (clickedShape && groupSelection.has(clickedShape._id)) {
+            groupDragging = true;
+            groupLastMouse = { x, y };
+            groupOrigPositions.clear();
+            for (let id of groupSelection) {
+              const s = shapesMap.get(id);
+              if (s) groupOrigPositions.set(id, { x: s.x, y: s.y });
+            }
+          } else {
+            selectingGroup = true;
+            startX = x;
+            startY = y;
+            selectionRect = { x: startX, y: startY, w: 0, h: 0 };
+            groupSelection.clear();
+          }
+          drawAll();
+          return;
+        }
+        groupSelection.clear();
+
+        if (mode === 'parent') {
+          if (!selectedForParenting) {
+            selectedForParenting = clickedShape;
+          } else {
+            if (clickedShape && selectedForParenting && clickedShape !== selectedForParenting) {
+              if (clickedShape.parent) {
+                const old = clickedShape.parent;
+                old.children = (old.children || []).filter(c => c !== clickedShape);
+              }
+              clickedShape.parent = selectedForParenting;
+              selectedForParenting.children = selectedForParenting.children || [];
+              if (!selectedForParenting.children.includes(clickedShape)) selectedForParenting.children.push(clickedShape);
+              clickedShape.relativeX = clickedShape.x - selectedForParenting.x;
+              clickedShape.relativeY = clickedShape.y - selectedForParenting.y;
+              drawAll();
+            }
+            selectedForParenting = null;
+          }
+          return;
+        }
+
+        if (mode === 'unparent') {
+          if (clickedShape && clickedShape.parent) {
+            const p = clickedShape.parent;
+            p.children = (p.children || []).filter(c => c !== clickedShape);
+            clickedShape.parent = null;
+            clickedShape.relativeX = 0;
+            clickedShape.relativeY = 0;
+            drawAll();
+          }
+          return;
+        }
+
+        if (mode === 'pan') {
+          panning = true;
+          startX = (client || e).clientX;
+          startY = (client || e).clientY;
+          canvas.style.cursor = 'grabbing';
+          return;
+        }
+
+        if (mode === 'draw') {
+          if (shape === 'text') {
+            drawing = true;
+            startX = x;
+            startY = y;
+            return;
+          }
+          drawing = true;
+          startX = x;
+          startY = y;
+        } else if (mode === 'move') {
+          if (selectedShape && getHandleAt(x, y, selectedShape)) {
+            const h = getHandleAt(x, y, selectedShape);
+            drawAll();
+            if (h) {
+              resizing = true;
+              resizeHandle = {
+                shape: selectedShape,
+                corner: h.corner,
+                origLeft: Math.min(selectedShape.x, selectedShape.x + selectedShape.w),
+                origTop: Math.min(selectedShape.y, selectedShape.y + selectedShape.h),
+                origW: Math.abs(selectedShape.w),
+                origH: Math.abs(selectedShape.h),
+                startX: x,
+                startY: y
+              };
+            } else {
+              moving = true;
+              offsetX = x - selectedShape.x;
+              offsetY = y - selectedShape.y;
+            }
+            updateFlutterWidgetAttr(selectedShape);
+          } else {
+            selectedShape = clickedShape;
+            if (selectedShape) {
+              const h = getHandleAt(x, y, selectedShape);
+              drawAll();
+              if (h) {
+                resizing = true;
+                resizeHandle = {
+                  shape: selectedShape,
+                  corner: h.corner,
+                  origLeft: Math.min(selectedShape.x, selectedShape.x + selectedShape.w),
+                  origTop: Math.min(selectedShape.y, selectedShape.y + selectedShape.h),
+                  origW: Math.abs(selectedShape.w),
+                  origH: Math.abs(selectedShape.h),
+                  startX: x,
+                  startY: y
+                };
+              } else {
+                moving = true;
+                offsetX = x - selectedShape.x;
+                offsetY = y - selectedShape.y;
+              }
+              updateFlutterWidgetAttr(selectedShape);
+            }
+          }
+        }
+      }
+
+      function handlePointerMove(e, client) {
+        const pos = getMousePos(canvas, client || e);
+        const x = pos.x, y = pos.y;
+
+        if (mode === 'group') {
+          if (selectingGroup) {
+            selectionRect.w = x - startX;
+            selectionRect.h = y - startY;
+            const minX = Math.min(selectionRect.x, selectionRect.x + selectionRect.w);
+            const minY = Math.min(selectionRect.y, selectionRect.y + selectionRect.h);
+            const maxX = Math.max(selectionRect.x, selectionRect.x + selectionRect.w);
+            const maxY = Math.max(selectionRect.y, selectionRect.y + selectionRect.h);
+            const hits = getShapesInRect(minX, minY, maxX, maxY);
+            groupSelection.clear();
+            for (const s of hits) groupSelection.add(s._id);
+            drawAll();
+            return;
+          }
+
+          if (groupDragging && groupLastMouse) {
+            const dx = x - groupLastMouse.x;
+            const dy = y - groupLastMouse.y;
+            groupLastMouse = { x, y };
+            drawAll();
+            return;
+          }
+        }
+
+        if (panning) {
+          viewport.x += ((client || e).clientX - startX);
+          viewport.y += ((client || e).clientY - startY);
+          startX = (client || e).clientX;
+          startY = (client || e).clientY;
+          drawAll();
+          return;
+        }
+
+        if (resizing && resizeHandle && resizeHandle.shape) {
+          const s = resizeHandle.shape;
+          const origLeft = resizeHandle.origLeft;
+          const origTop = resizeHandle.origTop;
+          const origW = resizeHandle.origW;
+          const origH = resizeHandle.origH;
+          const corner = resizeHandle.corner;
+
+          let rawLeft, rawTop, rawRight, rawBottom;
+          if (corner === 'nw') {
+            rawLeft = x; rawTop = y; rawRight = origLeft + origW; rawBottom = origTop + origH;
+          } else if (corner === 'ne') {
+            rawLeft = origLeft; rawTop = y; rawRight = x; rawBottom = origTop + origH;
+          } else if (corner === 'sw') {
+            rawLeft = x; rawTop = origTop; rawRight = origLeft + origW; rawBottom = y;
+          } else { // se
+            rawLeft = origLeft; rawTop = origTop; rawRight = x; rawBottom = y;
+          }
+
+          const newLeft = Math.min(rawLeft, rawRight);
+          const newTop = Math.min(rawTop, rawBottom);
+          const newW = Math.abs(rawRight - rawLeft);
+          const newH = Math.abs(rawBottom - rawTop);
+
+          s.x = newLeft; s.y = newTop; s.w = newW; s.h = newH;
+          drawAll();
+          return;
+        }
+
+        if (mode === 'draw' && drawing) {
+          drawAll();
+          const preview = {
+            type: shape,
+            x: startX,
+            y: startY,
+            w: x - startX,
+            h: y - startY,
+            strokeColor: strokeDefault,
+            fillColor: fillDefault,
+            textColor: textDefault,
+            lineWidth: lineWidth,
+            radiusTL: 0,
+            radiusTR: 0,
+            radiusBR: 0,
+            radiusBL: 0,
+            elevation: 0,
+            textSize: defaultTextSize,
+            fontWeight: defaultFontWeight,
+            textAlign: defaultTextAlign,
+            text: shape === 'text' ? 'Text' : '',
+            isPreview: true
+          };
+          drawShape(preview);
+        } else if (mode === 'move' && moving && selectedShape) {
+          const newX = x - offsetX;
+          const newY = y - offsetY;
+          moveShape(selectedShape, newX, newY, false);
+          drawAll();
+        }
+      }
+
+      function handlePointerUp(e, client) {
+        if (suppressNextPointerUp) { suppressNextPointerUp = false; return; }
+        const pos = getMousePos(canvas, client || e);
+        const x = pos.x, y = pos.y;
+
+        if (mode === 'group') {
+          if (selectingGroup) {
+            selectingGroup = false;
+            drawAll();
+            return;
+          }
+          if (groupDragging) {
+            groupDragging = false;
+            groupLastMouse = null;
+            for (let id of groupSelection) {
+              const s = shapesMap.get(id);
+              if (s) updateFlutterWidgetAttr(s);
+            }
+            drawAll();
+            return;
+          }
+          return;
+        }
+
+        if (panning) {
+          panning = false;
+          canvas.style.cursor = 'default';
+          return;
+        }
+
+        if (mode === 'draw' && drawing) {
+          drawing = false;
+          if (shape === 'text') {
+            const id = makeShapeId('text');
+            const textShape = {
+              type: 'text',
+              text: '',
+              x: startX,
+              y: startY,
+              w: x - startX,
+              h: y - startY,
+              strokeColor: strokeDefault,
+              fillColor: fillDefault,
+              textColor: textDefault,
+              lineWidth: lineWidth,
+              elevation: 0,
+              textSize: defaultTextSize,
+              fontWeight: defaultFontWeight,
+              textAlign: defaultTextAlign,
+              children: [],
+              parent: null,
+              relativeX: 0,
+              relativeY: 0,
+              _id: id
+            };
+            shapesMap.set(id, textShape);
+            zOrder.push(id);
+          } else {
+            const rVal = 0;
+            const id = makeShapeId(shape);
+            const newShape = {
+              type: shape,
+              x: startX,
+              y: startY,
+              w: x - startX,
+              h: y - startY,
+              strokeColor: strokeDefault,
+              fillColor: fillDefault,
+              textColor: textDefault,
+              lineWidth: lineWidth,
+              radiusTL: rVal,
+              radiusTR: rVal,
+              radiusBR: rVal,
+              radiusBL: rVal,
+              elevation: 0,
+              img: null,
+              imageFit: defaultImageFit,
+              children: [],
+              parent: null,
+              relativeX: 0,
+              relativeY: 0,
+              _id: id
+            };
+            shapesMap.set(id, newShape);
+            zOrder.push(id);
+          }
+          drawAll();
+        } else if (mode === 'move' && moving) {
+          moving = false;
+          if (selectedShape && selectedShape.parent) {
+            selectedShape.relativeX = selectedShape.x - selectedShape.parent.x;
+            selectedShape.relativeY = selectedShape.y - selectedShape.parent.y;
+          }
+          updateFlutterWidgetAttr(selectedShape);
+        } else if (resizing) {
+          resizing = false;
+          resizeHandle = null;
+          drawAll();
+          updateFlutterWidgetAttr(selectedShape);
+          return;
+        }
+      }
+
+      // Existing mouse events now delegate to unified handlers
+      canvas.addEventListener('mousedown', (e) => handlePointerDown(e));
+      canvas.addEventListener('mousemove', (e) => handlePointerMove(e));
+      canvas.addEventListener('mouseup', (e) => handlePointerUp(e));
+
+      // Touch events for mobile (prevent default to stop scrolling)
+      canvas.addEventListener('touchstart', (e) => {
+        const t = getPrimaryTouch(e);
+        if (!t) return;
+        e.preventDefault();
+        currentTouchActive = true;
+        pendingPointerDown = true;
+        currentTouchPoint = { clientX: t.clientX, clientY: t.clientY };
+        longPressStart = { clientX: t.clientX, clientY: t.clientY };
+
+        // Start long-press timer (single touch only)
+        if (e.touches && e.touches.length === 1) {
+          if (longPressTimer) clearTimeout(longPressTimer);
+          longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            if (!currentTouchActive || pinchZooming) return;
+            const moved = Math.hypot(currentTouchPoint.clientX - longPressStart.clientX, currentTouchPoint.clientY - longPressStart.clientY);
+            if (moved <= LONG_PRESS_TOLERANCE) {
+              const pos = getMousePos(canvas, longPressStart);
+              const shape = getShapeAt(pos.x, pos.y);
+              if (shape) {
+                selectedShape = shape;
+                showShapeContextMenu(longPressStart.clientX, longPressStart.clientY, shape._id, pos);
+              } else {
+                // Show a generic menu at the press location even if no shape
+                showShapeContextMenu(longPressStart.clientX, longPressStart.clientY, null, pos);
+              }
+              // cancel any interactions
+              drawing = false; moving = false; panning = false; resizing = false; selectingGroup = false; groupDragging = false;
+              resizeHandle = null; groupLastMouse = null;
+              canvas.style.cursor = 'default';
+              longPressActive = true;
+              suppressNextPointerUp = true;
+              pendingPointerDown = false;
+            }
+          }, LONG_PRESS_MS);
+        }
+        // Do not call pointerDown yet; defer until movement or tap end
+      }, { passive: false });
+
+      canvas.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length === 2) {
+          // Pinch zoom
+          e.preventDefault();
+          // cancel any long press pending
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+          pendingPointerDown = false;
+          const rect = canvas.getBoundingClientRect();
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const cx = ((t1.clientX + t2.clientX) / 2) - rect.left;
+          const cy = ((t1.clientY + t2.clientY) / 2) - rect.top;
+          const dx = t1.clientX - t2.clientX;
+          const dy = t1.clientY - t2.clientY;
+          const dist = Math.hypot(dx, dy);
+
+          // Initialize pinch state on first move or when not active
+          if (!pinchZooming || lastPinchDist === 0) {
+            pinchZooming = true;
+            lastPinchDist = dist;
+            pinchCenterScreen = { x: cx, y: cy };
+            return;
+          }
+
+          // Compute world point under pinch center before zoom
+          const worldBeforeX = (pinchCenterScreen.x - viewport.x) / viewport.zoom;
+          const worldBeforeY = (pinchCenterScreen.y - viewport.y) / viewport.zoom;
+
+          const scale = dist / lastPinchDist;
+          const newZoom = Math.max(viewport.minZoom, Math.min(viewport.maxZoom, viewport.zoom * scale));
+          viewport.zoom = newZoom;
+
+          // Keep the world point under the pinch center stable
+          viewport.x = pinchCenterScreen.x - worldBeforeX * viewport.zoom;
+          viewport.y = pinchCenterScreen.y - worldBeforeY * viewport.zoom;
+
+          lastPinchDist = dist;
+          drawAll();
+          return;
+        }
+
+        const t = getPrimaryTouch(e);
+        if (t) {
+          e.preventDefault();
+          currentTouchPoint = { clientX: t.clientX, clientY: t.clientY };
+          const moved = Math.hypot(currentTouchPoint.clientX - longPressStart.clientX, currentTouchPoint.clientY - longPressStart.clientY);
+          if (longPressTimer && moved > LONG_PRESS_TOLERANCE) { clearTimeout(longPressTimer); longPressTimer = null; }
+          // If user started moving beyond tolerance and we haven't begun yet, begin interaction now
+          if (pendingPointerDown && moved > LONG_PRESS_TOLERANCE) {
+            pendingPointerDown = false;
+            handlePointerDown(e, t);
+          }
+          handlePointerMove(e, t);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', (e) => {
+        if (e.touches && e.touches.length < 2) {
+          pinchZooming = false;
+          lastPinchDist = 0;
+        }
+        currentTouchActive = false;
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        const t = getPrimaryTouch(e);
+        if (t) {
+          e.preventDefault();
+          // If this was a quick tap that never moved or long-pressed, simulate click
+          if (pendingPointerDown && !longPressActive && !pinchZooming) {
+            pendingPointerDown = false;
+            handlePointerDown(e, t);
+            handlePointerUp(e, t);
+          } else {
+            handlePointerUp(e, t);
+          }
+        }
+        longPressActive = false;
+      }, { passive: false });
+
+      canvas.addEventListener('touchcancel', (e) => {
+        // Gracefully end interactions if touch is interrupted
+        drawing = false; moving = false; panning = false; resizing = false; groupDragging = false; selectingGroup = false;
+        resizeHandle = null; groupLastMouse = null;
+        canvas.style.cursor = 'default';
+        drawAll();
+      });
+
+
+      /**
+       * Adds a new attribute to a shape object.
+       * @param {Object} shape - The shape object.
+       * @param {string} attr - The attribute name.
+       * @param {*} value - The attribute value.
+       */
+      function addShapeAttribute(shape, attr, value) {
+        shape[attr] = value;
+      }
+
+      /**
+       * Updates an existing attribute of a shape object.
+       * @param {Object} shape - The shape object.
+       * @param {string} attr - The attribute name.
+       * @param {*} value - The new value.
+       */
+      function updateShapeAttribute(shape, attr, value) {
+        if (shape.hasOwnProperty(attr)) {
+          shape[attr] = value;
+        }
+      }
+
+      /**
+       * Adds an onchange listener for a shape attribute.
+       * @param {Object} shape - The shape object.
+       * @param {string} attr - The attribute name.
+       * @param {Function} callback - The function to call when the attribute changes.
+       */
+      function addShapeAttributeListener(shape, attr, callback) {
+        let internalValue = shape[attr];
+        Object.defineProperty(shape, attr, {
+          get() {
+            return internalValue;
+          },
+          set(newValue) {
+            internalValue = newValue;
+            callback(newValue);
+          },
+          configurable: true
+        });
+      }
+
+      function drawAll() {
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform before drawing
+        const dpr = window.devicePixelRatio || 1;
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+        // Apply viewport transformation
+        ctx.save();
+        ctx.translate(viewport.x, viewport.y);
+        ctx.scale(viewport.zoom, viewport.zoom);
+
+        // Draw grid (optional)
+        drawGrid();
+
+        // parent-child connection lines removed (not needed)
+
+        // Draw shapes using zOrder (back -> front)
+        for (let id of zOrder) {
+          const s = shapesMap.get(id);
+          if (s) drawShape(s);
+        }
+
+        // If a shape is selected (move mode), draw its resize handles
+        try {
+          if (selectedShape) {
+            drawResizeHandles(selectedShape);
+          }
+        } catch (err) {
+          // ignore if selectedShape is null or malformed
+        }
+
+         // Draw group selection marquee and highlight selected shapes
+        try {
+          if (selectionRect) {
+            ctx.save();
+            ctx.strokeStyle = '#5D2E8C';
+            ctx.fillStyle = 'rgba(51,153,255,0.12)';
+            ctx.lineWidth = 1 / viewport.zoom;
+            ctx.beginPath();
+            ctx.rect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          if (groupSelection && groupSelection.size > 0) {
+            ctx.save();
+            ctx.strokeStyle = '#ff9900';
+            ctx.lineWidth = 2 / viewport.zoom;
+            ctx.setLineDash([4 / viewport.zoom, 4 / viewport.zoom]);
+            for (let id of groupSelection) {
+              const s = shapesMap.get(id);
+              if (!s) continue;
+              const minX = Math.min(s.x, s.x + (s.w || 0));
+              const minY = Math.min(s.y, s.y + (s.h || 0));
+              const w = Math.abs(s.w || 0);
+              const h = Math.abs(s.h || 0);
+              if (s.type === 'circle') {
+                const r = Math.max(Math.abs(s.w || 0), Math.abs(s.h || 0)) / 2;
+                const cx = s.x + (s.w || 0) / 2;
+                const cy = s.y + (s.h || 0) / 2;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r + (4 / viewport.zoom), 0, Math.PI * 2);
+                ctx.stroke();
+              } else {
+                ctx.strokeRect(minX - (2 / viewport.zoom), minY - (2 / viewport.zoom), w + (4 / viewport.zoom), h + (4 / viewport.zoom));
+              }
+            }
+            ctx.restore();
+          }
+        } catch (err) {
+          // ignore drawing errors for selection overlay
+        }
+
+        // Restore original transformation
+        ctx.restore();
+        // console.log('drawing all');
+      }
+
+      // Helper: draw rounded rectangle path supporting per-corner radii
+      function roundRectPath(ctx, x, y, w, h, radii) {
+        // normalize to top-left + width/height
+        const left = Math.min(x, x + w);
+        const top = Math.min(y, y + h);
+        const width = Math.abs(w);
+        const height = Math.abs(h);
+
+        let tl = (radii && (radii.tl || radii.tl === 0)) ? radii.tl : (radii || 0);
+        let tr = (radii && (radii.tr || radii.tr === 0)) ? radii.tr : (radii || 0);
+        let br = (radii && (radii.br || radii.br === 0)) ? radii.br : (radii || 0);
+        let bl = (radii && (radii.bl || radii.bl === 0)) ? radii.bl : (radii || 0);
+
+        // cap radii to half dims
+        const max = Math.min(width / 2, height / 2);
+        tl = Math.min(Math.max(0, tl), max);
+        tr = Math.min(Math.max(0, tr), max);
+        br = Math.min(Math.max(0, br), max);
+        bl = Math.min(Math.max(0, bl), max);
+
+        const x0 = left, x1 = left + width;
+        const y0 = top, y1 = top + height;
+
+        ctx.beginPath();
+        ctx.moveTo(x0 + tl, y0);
+        ctx.lineTo(x1 - tr, y0);
+        if (tr) ctx.quadraticCurveTo(x1, y0, x1, y0 + tr);
+        else ctx.lineTo(x1, y0);
+        ctx.lineTo(x1, y1 - br);
+        if (br) ctx.quadraticCurveTo(x1, y1, x1 - br, y1);
+        else ctx.lineTo(x1, y1);
+        ctx.lineTo(x0 + bl, y1);
+        if (bl) ctx.quadraticCurveTo(x0, y1, x0, y1 - bl);
+        else ctx.lineTo(x0, y1);
+        ctx.lineTo(x0, y0 + tl);
+        if (tl) ctx.quadraticCurveTo(x0, y0, x0 + tl, y0);
+        else ctx.lineTo(x0, y0);
+        ctx.closePath();
+      }
+
+      function drawShape(s) {
+        if (!s.isVisible){
+          return;
+        }
+        ctx.save();
+
+        // Set up shadow if elevation is present
+        if (s.elevation && !s.isPreview) {
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+          ctx.shadowBlur = s.elevation * 2;
+          ctx.shadowOffsetX = s.elevation;
+          ctx.shadowOffsetY = s.elevation;
+        }
+
+        // --- Hairline-safe line width handling ---
+        setHairline(ctx, s, viewport);
+        // -----------------------------------------
+
+        // ctx.strokeStyle = s.strokeColor;
+        //ctx.fillStyle = s.fillColor;
+
+      ctx.fillStyle = resolvePaintStyle(s.fillGradient ?? s.fillColor, s, 'fill');
+      ctx.strokeStyle = resolvePaintStyle(s.strokeGradient ?? s.strokeColor, s, 'stroke');
+
+        // Draw shape and create clipping path for image if present
+        if (s.type === "rect") {
+          const radii = {
+            tl: (s.radiusTL != null) ? s.radiusTL : s.radius || 0,
+            tr: (s.radiusTR != null) ? s.radiusTR : s.radius || 0,
+            br: (s.radiusBR != null) ? s.radiusBR : s.radius || 0,
+            bl: (s.radiusBL != null) ? s.radiusBL : s.radius || 0
+          };
+          const anyRadius = radii.tl || radii.tr || radii.br || radii.bl;
+
+          ctx.beginPath();
+          if (anyRadius > 0) {
+            roundRectPath(ctx, s.x, s.y, s.w, s.h, radii);
+          } else {
+            ctx.rect(s.x, s.y, s.w, s.h);
+          }
+
+          ctx.save();
+          ctx.beginPath();
+          if (anyRadius > 0) {
+            roundRectPath(ctx, s.x, s.y, s.w, s.h, radii);
+          } else {
+            ctx.rect(s.x, s.y, s.w, s.h);
+          }
+
+          ctx.fill();
+
+          if (s.img) {
+            ctx.save();
+            ctx.clip();
+            drawImageFit(ctx, s.img, s.x, s.y, Math.abs(s.w), Math.abs(s.h), s.imageFit || 'cover', s.imgColor);
+            ctx.restore();
+          }
+
+          if (s.graphType) {
+            ctx.save();
+            ctx.clip();
+            drawGraphInRect(ctx, s);
+            ctx.restore();
+          }
+
+          ctx.stroke();
+          ctx.restore();
+
+        } else if (s.type === "circle") {
+          const r = Math.max(Math.abs(s.w), Math.abs(s.h)) / 2;
+          const centerX = s.x + s.w / 2;
+          const centerY = s.y + s.h / 2;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
+          ctx.fill();
+
+          // optional image omitted for clarity
+
+          if (s.img) {
+            ctx.save();
+            ctx.clip();
+            drawImageFit(ctx, s.img, s.x, s.y, Math.abs(s.w), Math.abs(s.h), s.imageFit || 'cover', s.imgColor);
+            ctx.restore();
+          }
+
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
+          ctx.stroke();
+          ctx.restore();
+
+        } else if (s.type === "line") {
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y);
+          ctx.lineTo(s.x + s.w, s.y + s.h);
+          ctx.stroke();
+
+        } else if (s.type === "text") {
+          ctx.beginPath();
+          ctx.rect(s.x, s.y, s.w, s.h);
+          ctx.fill();
+          ctx.stroke();
+
+          const rawSize = (s.textSize != null) ? s.textSize : defaultTextSize;
+          const fontSize = rawSize / (s.isPreview ? viewport.zoom : 1);
+          const weight = s.fontWeight || defaultFontWeight;
+          ctx.font = `${weight} ${fontSize}px Arial`;
+          ctx.fillStyle = s.textColor || "#000";
+          ctx.textBaseline = 'top';
+          ctx.textAlign = s.textAlign || defaultTextAlign;
+
+          const padding = 5;
+          const availableWidth = Math.abs(s.w) - padding * 2;
+          const lineHeight = fontSize * 1.2;
+          const lines = getTextLines(s.text || '', availableWidth, ctx);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(s.x, s.y, s.w, s.h);
+          ctx.clip();
+
+          lines.forEach((line, index) => {
+            let xPos = s.x + padding;
+            if (ctx.textAlign === 'center') xPos = s.x + s.w / 2;
+            else if (ctx.textAlign === 'right') xPos = s.x + s.w - padding;
+            const yPos = s.y + padding + (index * lineHeight);
+            ctx.fillText(line, xPos, yPos);
+          });
+
+          ctx.restore();
+
+        } else if (s.type === "image") {
+          if (s.img) {
+            drawImageFit(ctx, s.img, s.x, s.y, s.w, s.h, s.imageFit || defaultImageFit, s.imgColor);
+          }
+        }
+
+        // Reset shadow, alpha, and restore context
+        ctx.globalAlpha = 1.0;
+        ctx.restore();
+      }
+
+
+function setHairline(ctx, s, viewport) {
+      const dpr = window.devicePixelRatio || 1;
+      const zoom = s.isPreview ? 1 : viewport.zoom;
+
+      let lw = (s.lineWidth || 2) / zoom;
+      if (lw < 1 / dpr) lw = 1 / dpr;       // make sure it's visible
+      ctx.lineWidth = lw;
+    }
+
+    // Create color or gradient style from a paint spec (string or object)
+    function resolvePaintStyle(paint, shape, kind) {
+      if (!paint) return kind === 'stroke' ? '#000' : '#fff';
+      if (typeof paint === 'string') return paint; // simple color
+      // gradient object: { type: 'linear'|'radial', angle?, stops: [{offset,color}],
+      // coords optional as fractions: x0,y0,x1,y1 for linear; cx,cy,r0,r1 for radial
+      const bounds = getShapeBounds(shape);
+      if (!bounds) return '#000';
+
+      // Normalize stops to support >2 colors and missing offsets
+      const stops = normalizeStops(paint);
+      if (!stops || stops.length < 2) {
+        // Fallback to first color or neutral if insufficient data
+        const fallback = stops && stops[0] ? stops[0].color : (kind === 'stroke' ? '#000' : '#fff');
+        return fallback;
+      }
+
+      if (paint.type === 'linear') {
+        const g = createLinearGradientForBounds(bounds, paint);
+        stops.forEach(st => g.addColorStop(st.offset, st.color));
+        return g;
+      } else if (paint.type === 'radial') {
+        const g = createRadialGradientForBounds(bounds, paint);
+        stops.forEach(st => g.addColorStop(st.offset, st.color));
+        return g;
+      }
+      return '#000';
+    }
+
+    // Accept either explicit stops or a simple colors array and sort by offset
+    function normalizeStops(spec) {
+      let stops = [];
+      if (Array.isArray(spec?.stops) && spec.stops.length > 0) {
+        stops = spec.stops
+          .map(s => ({ offset: clamp01(s.offset ?? 0), color: s.color }))
+          .filter(s => typeof s.color === 'string' && s.color);
+      } else if (Array.isArray(spec?.colors) && spec.colors.length > 0) {
+        const n = spec.colors.length;
+        stops = spec.colors
+          .filter(c => typeof c === 'string' && c)
+          .map((c, i) => ({ offset: n === 1 ? 0 : i / (n - 1), color: c }));
+      }
+      // Sort by offset ascending to ensure consistent gradient rendering
+      stops.sort((a, b) => a.offset - b.offset);
+      return stops;
+    }
+
+    function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+    // Return normalized bounds {x,y,w,h} with positive w/h
+    function getShapeBounds(s){
+      if (!s) return null;
+      if (s.type === 'circle') {
+        const left = Math.min(s.x, s.x + s.w);
+        const top = Math.min(s.y, s.y + s.h);
+        const w = Math.abs(s.w);
+        const h = Math.abs(s.h);
+        return { x: left, y: top, w, h };
+      }
+      const left = Math.min(s.x, s.x + (s.w || 0));
+      const top = Math.min(s.y, s.y + (s.h || 0));
+      const w = Math.abs(s.w || 0);
+      const h = Math.abs(s.h || 0);
+      return { x: left, y: top, w, h };
+    }
+
+    // Linear gradient helper for a shape's bounds
+    function createLinearGradientForBounds(bounds, spec){
+      const { x, y, w, h } = bounds;
+      // If explicit fractional coords provided, use them
+      if (['x0','y0','x1','y1'].every(k => spec.hasOwnProperty(k))) {
+        const x0 = x + clamp01(spec.x0) * w;
+        const y0 = y + clamp01(spec.y0) * h;
+        const x1 = x + clamp01(spec.x1) * w;
+        const y1 = y + clamp01(spec.y1) * h;
+        return ctx.createLinearGradient(x0, y0, x1, y1);
+      }
+      // Otherwise derive from angle (degrees), default 0° → left→right
+      const angleDeg = (spec.angle ?? 0);
+      const theta = angleDeg * Math.PI / 180;
+      const cx = x + w/2, cy = y + h/2;
+      const rx = w/2, ry = h/2;
+      const dx = Math.cos(theta) * rx;
+      const dy = Math.sin(theta) * ry;
+      return ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+    }
+
+    // Radial gradient helper for a shape's bounds
+    function createRadialGradientForBounds(bounds, spec){
+      const { x, y, w, h } = bounds;
+      const cx = x + clamp01(spec.cx ?? 0.5) * w;
+      const cy = y + clamp01(spec.cy ?? 0.5) * h;
+      const r1 = (spec.r1 != null ? clamp01(spec.r1) : 0.5) * Math.min(w, h);
+      const r0 = (spec.r0 != null ? clamp01(spec.r0) : 0.0) * Math.min(w, h);
+      // Canvas radial uses two circles; keep same center for simple case
+      return ctx.createRadialGradient(cx, cy, r0, cx, cy, r1);
+    }
+
+
+    function hexToRgb(hex) {
+      hex = hex.replace("#", "");
+     if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+        return { r: 0, g: 0, b: 0 };
+      }
+      return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16)
+      };
+    }
+
+    function rgbToHex({ r, g, b }) {
+      const toHex = (v) =>
+        Math.max(0, Math.min(255, Math.round(v)))
+          .toString(16)
+          .padStart(2, "0");
+
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+
+    // ---- Shade Logic ----
+    function shadeColor(hex, percent) {
+      const { r, g, b } = hexToRgb(hex);
+
+      const t = percent < 0 ? 0 : 255;
+      const p = Math.abs(percent);
+
+      return rgbToHex({
+        r: (t - r) * p + r,
+        g: (t - g) * p + g,
+        b: (t - b) * p + b
+      });
+    }
+
+    // ---- Generate Multiple Shades ----
+    function generateShades(hex, steps = 5) {
+      const shades = [];
+
+      for (let i = -steps; i <= steps; i++) {
+        if (i === 0) continue;
+        shades.push(shadeColor(hex, i / (steps * 2)));
+      }
+
+      return shades;
+    }
+
+
+    function drawGraphInRect(ctx, s) {
+    const x = Number.isFinite(s.x) ? s.x : 0;
+    const y = Number.isFinite(s.y) ? s.y : 0;
+    const w = Number.isFinite(s.w) ? s.w : 100;
+    const h = Number.isFinite(s.h) ? s.h : 100;
+    const graphType = s.graphType || "bar";
+    const absW = Math.abs(w);
+    const absH = Math.abs(h);
+
+    // Some nice-looking arbitrary demo values
+    const values = [12, 35, 25, 45, 30];
+    const labels = ["A", "B", "C", "D", "E"];
+    const colors = generateShades(s.strokeColor, 5); // ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f"];
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    if (graphType === "bar") {
+      const maxVal = Math.max(...values);
+      const barWidth = absW / values.length;
+
+      values.forEach((val, i) => {
+        const barHeight = (val / maxVal) * (absH * 0.8);
+        const bx = i * barWidth + barWidth * 0.1;
+        const by = absH - barHeight;
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(bx, by, barWidth * 0.8, barHeight);
+      });
+    }
+
+    else if (graphType === "line") {
+      const maxVal = Math.max(...values);
+      const stepX = absW / (values.length - 1);
+      ctx.beginPath();
+      ctx.strokeStyle = colors[0];
+      ctx.lineWidth = 2;
+
+      values.forEach((val, i) => {
+        const px = i * stepX;
+        const py = absH - (val / maxVal) * absH * 0.8;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+
+      ctx.stroke();
+      ctx.closePath();
+
+      // Draw small points
+      ctx.fillStyle = colors[0];
+      values.forEach((val, i) => {
+        const px = i * stepX;
+        const py = absH - (val / maxVal) * absH * 0.8;
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    else if (graphType === "pie") {
+      const total = values.reduce((a, b) => a + b, 0);
+      const cx = absW / 2;
+      const cy = absH / 2;
+      const radius = Math.min(absW, absH) / 2.5;
+      let startAngle = 0;
+
+      values.forEach((val, i) => {
+        const sliceAngle = (val / total) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+        startAngle += sliceAngle;
+      });
+    }
+
+    ctx.restore();
+    }
+
+      // Helper: draw an image into a rect with different fit modes
+      function drawImageFit(ctx, img, dx, dy, dWidth, dHeight, fit, tintColor = '#f00', tintOpacity = 0.5) {
+         if (!img || !img.complete || !img.naturalWidth) return;
+
+          const sw = img.naturalWidth;
+          const sh = img.naturalHeight;
+          let sx = 0, sy = 0, sWidth = sw, sHeight = sh;
+          let drawDx = dx, drawDy = dy, drawWidth = dWidth, drawHeight = dHeight;
+
+          // Fit modes
+          if (fit === 'cover') {
+            const scale = Math.max(dWidth / sw, dHeight / sh);
+            sWidth = dWidth / scale;
+            sHeight = dHeight / scale;
+            sx = (sw - sWidth) / 2;
+            sy = (sh - sHeight) / 2;
+          } else if (fit === 'contain') {
+            const scale = Math.min(dWidth / sw, dHeight / sh);
+            drawWidth = sw * scale;
+            drawHeight = sh * scale;
+            drawDx = dx + (dWidth - drawWidth) / 2;
+            drawDy = dy + (dHeight - drawHeight) / 2;
+          } else if (fit === 'none') {
+            drawWidth = sw;
+            drawHeight = sh;
+          }
+
+          if (!tintColor) {
+            // No tint, draw directly
+            ctx.drawImage(img, sx, sy, sWidth, sHeight, drawDx, drawDy, drawWidth, drawHeight);
+            return;
+          }
+
+          // Create offscreen canvas
+          const off = document.createElement('canvas');
+          off.width = drawWidth;
+          off.height = drawHeight;
+          const offCtx = off.getContext('2d');
+
+          // Draw image onto offscreen canvas
+          offCtx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, drawWidth, drawHeight);
+
+          // Apply tint using 'source-in' — affects only image pixels
+          offCtx.fillStyle = tintColor;
+          offCtx.globalCompositeOperation = 'source-in';
+          offCtx.fillRect(0, 0, drawWidth, drawHeight);
+
+          // Draw tinted image back to main canvas
+          ctx.drawImage(off, drawDx, drawDy);
+      }
+
+      function getShapeAt(x, y) {
+        // Iterate zOrder in reverse (front to back) to pick top-most shape
+        const arr = zOrder.map(id => shapesMap.get(id));
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const s = arr[i];
+          if (s.type === "rect") {
+            const minX = Math.min(s.x, s.x + s.w);
+            const maxX = Math.max(s.x, s.x + s.w);
+            const minY = Math.min(s.y, s.y + s.h);
+            const maxY = Math.max(s.y, s.y + s.h);
+            if (x >= minX && x <= maxX && y >= minY && y <= maxY) return s;
+          } else if (s.type === "circle") {
+            // Match circle drawing logic: center is bbox midpoint, radius based on max dimension
+            const r = Math.max(Math.abs(s.w), Math.abs(s.h)) / 2;
+            const centerX = s.x + s.w / 2;
+            const centerY = s.y + s.h / 2;
+            const dx = x - centerX, dy = y - centerY;
+            if (Math.sqrt(dx * dx + dy * dy) <= r) return s;
+          } else if (s.type === "text") {
+            if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h)
+              return s;
+          } else if (s.type === "image") {
+            if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h)
+              return s;
+          }
+        }
+        return null;
+      }
+
+  ///////////////////////////////// FLUTTER ADD
+
+    function setMode(modeVal){
+      mode = modeVal;
+      selectedShape = null;
+      groupSelection.clear();
+      selectionRect = null;
+    }
+
+    function setShape(shapeVal){
+      shape = shapeVal;
+    }
+
+    function updateFlutterWidgetAttr(widget, sh=true){
+      let retval = {
+        _id: widget._id,
+        x: widget.x,
+        y: widget.y,
+        h: widget.h,
+        w: widget.w,
+        updateShow: sh
+      };
+    }
+
+
+    function updateJsWidgetAttr(attr){
+      let data = JSON.parse(attr);
+      let name = data['id'];
+      if ('x' in data) {
+        moveShape(shapesMap[name], data['x'], shapesMap[name].y, false);
+      }
+      if ('y' in data) {
+        moveShape(shapesMap[name], shapesMap[name].x, data['y'], false);
+      }
+      if ('w' in data) {
+        shapesMap[name].w = data['w'];
+      }
+       if ('h' in data) {
+        shapesMap[name].h = data['h'];
+      }
+       if ('strokeColor' in data) {
+        shapesMap[name].strokeColor = data['strokeColor'];
+      }
+       if ('fillColor' in data) {
+        shapesMap[name].fillColor = data['fillColor'];
+      }
+       if ('textColor' in data) {
+        shapesMap[name].textColor = data['textColor'];
+      }
+       if ('lineWidth' in data) {
+        shapesMap[name].lineWidth = data['lineWidth'];
+      }
+       if ('radiusTL' in data) {
+        shapesMap[name].radiusTL = data['radiusTL'];
+      }
+       if ('radiusTR' in data) {
+        shapesMap[name].radiusTR = data['radiusTR'];
+      }
+       if ('radiusBR' in data) {
+        shapesMap[name].radiusBR = data['radiusBR'];
+      }
+       if ('radiusBL' in data) {
+        shapesMap[name].radiusBL = data['radiusBL'];
+      }
+       if ('elevation' in data) {
+        shapesMap[name].elevation = data['elevation'];
+      }
+       if ('img' in data) {
+        shapesMap[name].img = getImageFromUrl(data['img']);
+      }
+       if ('imageFit' in data) {
+        shapesMap[name].imageFit = data['imageFit'];
+      }
+       if ('relativeX' in data) {
+        shapesMap[name].relativeX = data['relativeX'];
+      }
+       if ('relativeY' in data) {
+        shapesMap[name].relativeY = data['relativeY'];
+      }
+       if ('textAlign' in data) {
+        shapesMap[name].textAlign = data['textAlign'];
+      }
+       if ('fontWeight' in data) {
+        shapesMap[name].fontWeight = data['fontWeight'];
+      }
+       if ('text' in data) {
+        shapesMap[name].text = data['text'];
+      }
+       if ('isVisible' in data) {
+        shapesMap[name].isVisible = data['isVisible'];
+        drawShape(shapesMap[name]);
+      }
+    }
+
+    function updateWidgetParentFromFlutter(childId, newParentId){
+      let child = shapesMap.get(childId);
+      let newParent = null;
+      if(newParentId!=null) newParent = shapesMap.get(newParentId);
+      updateWidgetParent(child, newParent);
+    }
+
+    function updateWidgetParent(child, newParent){
+        if(child==null) return;
+        let oldParent =  child.parent;
+        if (newParent != child.parent) {
+          child.parent = newParent;
+          if (newParent!==null) newParent.children.push(child);
+        }
+        if(oldParent!= null){
+          const index = oldParent.children.indexOf(child);
+          if (index !== -1) {
+            oldParent.children.splice(index, 1);
+          }
+        }
+    }
+
+
+    function initAllShapes(state){
+       let data = shapesData[state];
+
+      shapesMap = new Map();
+      zOrder=[];
+      for(var d of data){
+        var widget = deserializeWidget(d,true);
+      }
+      drawAll();
+    }
+
+    function deserializeWidget(childData, shouldAddToShapes=false){
+      let shape = childData["type"];
+      let id = childData["id"];
+      if (shape === "text") {
+          // Create a text shape (draw rect then set content via toolbar)
+          const textShape = {
+            type: childData["type"],
+            text: childData["text"],
+            x: childData["x"],
+            y: childData["y"],
+            w: childData["w"],
+            h: childData["h"],
+            strokeColor: childData["strokeColor"],
+            fillColor: childData["fillColor"],
+            textColor: childData["textColor"],
+            lineWidth: childData["lineWidth"],
+            elevation: childData["elevation"],
+            textSize: childData["textSize"],
+            fontWeight: childData["fontWeight"],
+            textAlign: childData["textAlign"],
+            isVisible: childData["isVisible"],
+            fillGradient: childData["fillGradient"],
+            children: [],
+            parent: null,
+            relativeX: 0,
+            relativeY: 0,
+            _id: id
+          };
+          shapesMap.set(id, textShape);
+          zOrder.push(id);
+          for (var d of childData["children"]){
+            let c = deserializeWidget(d, shouldAddToShapes);
+            if(c != null) updateWidgetParent(c, textShape);
+          }
+          return textShape;
+        } else {
+          let newShape = {
+            type: shape,
+            x: childData["x"],
+            y: childData["y"],
+            w: childData["w"],
+            h: childData["h"],
+            strokeColor: childData["strokeColor"],
+            imgColor: childData["imgColor"],
+            fillColor: childData["fillColor"],
+            textColor: childData["textColor"],
+            lineWidth: childData["lineWidth"],
+            radiusTL: childData["radiusTL"],
+            radiusTR: childData["radiusTR"],
+            radiusBR: childData["radiusBR"],
+            radiusBL: childData["radiusBL"],
+            elevation: childData["elevation"],
+            graphType: childData["graphType"],
+            img: getImageFromUrl(childData["img"]), // Add image property
+            imageFit: childData["imgFit"], // Add default image fit
+            isVisible: childData["isVisible"],
+            fillGradient: childData["fillGradient"],
+            children: [],
+            parent: null,
+            relativeX: 0,
+            relativeY: 0,
+            _id: id
+          };
+          shapesMap.set(id, newShape);
+          zOrder.push(id
+          );
+          if (childData["children"] !=null){
+            for (var d of childData["children"]){
+              let c = deserializeWidget(d, shouldAddToShapes);
+              if(c != null) updateWidgetParent(c, newShape);
+            }
+          }
+          return newShape;
+        }
+    }
+
+    function deleteWidget(id){
+      shapesMap.delete(id);
+      zOrder = zOrder.filter(item => item !== id);
+      selectedShape = null;
+      drawAll();
+    }
+
+    function updateDartWidgetOrder(){
+    }
+
+
+    function updateWidget(data){
+      let childData =  typeof data === "string" ? JSON.parse(data) : data; //JSON.parse(data);
+      let id = childData["id"];
+      let shapeType = childData["type"];
+      let existingShape = shapesMap.get(id);
+       /// Creation logic
+      // ✅ If shape already exists, update it
+      if (existingShape) {
+        // Update base properties
+        existingShape.x = childData["x"];
+        existingShape.y = childData["y"];
+        existingShape.w = childData["w"];
+        existingShape.h = childData["h"];
+        existingShape.strokeColor = childData["strokeColor"];
+        existingShape.fillColor = childData["fillColor"];
+        existingShape.textColor = childData["textColor"];
+        existingShape.lineWidth = childData["lineWidth"];
+        existingShape.elevation = childData["elevation"];
+        existingShape.isVisible = childData["isVisible"];
+          existingShape.fillGradient = childData["fillGradient"];
+
+        // Type-specific updates
+        if (shapeType === "text") {
+          existingShape.text = childData["text"];
+          existingShape.textSize = childData["textSize"];
+          existingShape.fontWeight = childData["fontWeight"];
+          existingShape.textAlign = childData["textAlign"];
+        } else {
+          existingShape.radiusTL = childData["radiusTL"];
+          existingShape.radiusTR = childData["radiusTR"];
+          existingShape.radiusBR = childData["radiusBR"];
+          existingShape.radiusBL = childData["radiusBL"];
+          existingShape.img = getImageFromUrl(childData["img"]);
+          existingShape.imageFit = childData["imgFit"];
+          existingShape.imgColor = childData["imgColor"];
+          existingShape.graphType = childData["graphType"];
+         }
+
+         if (childData && childData.children) {
+          childData.children.forEach(d => {
+            updateWidget(d);
+          });
+        }
+      }
+    }
+
+    function getImageFromUrl(url) {
+        if(url=='' || url==null) return null;
+        defaultImage = new Image();
+        defaultImage.src = url;
+        defaultImage.onload = () => { drawAll(); };
+         return defaultImage;
+     }
+
+
+    function setDefaultTextSize(value) {
+        defaultTextSize = value;
+     }
+
+    function setDefaultFontWeight(value) {
+        defaultFontWeight = value;
+     }
+
+    function setDefaultTextAlign(value) {
+        defaultTextAlign = value;
+     }
+
+    function setStrokeDefaultColor(value) {
+        strokeDefault = value;
+     }
+
+
+    function setFillDefaultColor(value) {
+        fillDefault = value;
+     }
+
+
+    function setTextDefaultColor(value) {
+        textDefault = value;
+     }
+
+
+    function setDefaultImageFit(value) {
+        defaultImageFit = value;
+     }
+
+    function setDefaultStrokeWidth(value) {
+        lineWidth = value;
+     }
+
+
+    window.addEventListener('message', (event) => {
+      if (event.data?.action === 'initAllShapes') {
+        data = event.data.payload;
+        initAllShapes(data);
+      }else if (event.data?.action === 'setShape') {
+        data = event.data.payload;
+        setShape(data);
+      }else if (event.data?.action === 'setMode') {
+        data = event.data.payload;
+        setMode(data);
+      }else if (event.data?.action === 'drawAll') {
+        drawAll();
+      }else if (event.data?.action === 'deserializeWidget') {
+        childData = event.data.childData;
+        shouldAddToShapes = event.data.shouldAddToShapes;
+        deserializeWidget(childData, shouldAddToShapes);
+      }else if (event.data?.action === 'updateWidgetParentFromFlutter') {
+        newParentId = event.data.newParentId;
+        childId = event.data.childId;
+        updateWidgetParentFromFlutter(childId, newParentId);
+      }else if (event.data?.action === 'updateJsWidgetAttr') {
+        attr = event.data.attr;
+        updateJsWidgetAttr(attr);
+      }else if (event.data?.action === 'setDefaultTextSize') {
+        attr = event.data.attr;
+        setDefaultTextSize(attr);
+      }else if (event.data?.action === 'setDefaultFontWeight') {
+        attr = event.data.attr;
+        setDefaultFontWeight(attr);
+      }else if (event.data?.action === 'setDefaultTextAlign') {
+        attr = event.data.attr;
+        setDefaultTextAlign(attr);
+      }else if (event.data?.action === 'setStrokeDefaultColor') {
+        attr = event.data.attr;
+        setStrokeDefaultColor(attr);
+      }else if (event.data?.action === 'setFillDefaultColor') {
+        attr = event.data.attr;
+        setFillDefaultColor(attr);
+      }else if (event.data?.action === 'setTextDefaultColor') {
+        attr = event.data.attr;
+        setTextDefaultColor(attr);
+      }else if (event.data?.action === 'setDefaultImageFit') {
+        attr = event.data.attr;
+        setDefaultImageFit(attr);
+      }else if (event.data?.action === 'setDefaultStrokeWidth') {
+        attr = event.data.attr;
+        setDefaultStrokeWidth(attr);
+      }else if (event.data?.action === 'panToShape') {
+        let id = event.data.id;
+         panToShape(id);
+      }else if (event.data?.action === 'updateWidget') {
+        let data = event.data.widget;
+         updateWidget(data);
+      }else if (event.data?.action === 'deleteWidget') {
+        let id = event.data.id;
+         deleteWidget(id);
+      }else if (event.data?.action === 'setShapeName') {
+        let id = event.data.attr;
+         setShapeName(id);
+      }
+    });
+
+
+    function setShapeName(typeVal){
+      shapeName = typeVal;
+    }
+
+    // Auto pan controls:
+    let _panAnimReq = null;
+      function panTo(x, y, opts = {}) {
+        const { animate = true, duration = 400 } = opts;
+        const rect = canvas.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+
+        const targetX = centerX - x * viewport.zoom;
+        const targetY = centerY - y * viewport.zoom;
+
+        if (!animate || duration <= 0) {
+          viewport.x = targetX;
+          viewport.y = targetY;
+          drawAll();
+          return;
+        }
+
+        const startX = viewport.x;
+        const startY = viewport.y;
+        const startTime = performance.now();
+
+        // cancel any existing pan
+        if (_panAnimReq) cancelAnimationFrame(_panAnimReq);
+
+        function easeInOutCubic(t) {
+          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function step(now) {
+          const t = Math.min(1, (now - startTime) / duration);
+          const eased = easeInOutCubic(t);
+          viewport.x = startX + (targetX - startX) * eased;
+          viewport.y = startY + (targetY - startY) * eased;
+          drawAll();
+          if (t < 1) {
+            _panAnimReq = requestAnimationFrame(step);
+          } else {
+            _panAnimReq = null;
+          }
+        }
+        _panAnimReq = requestAnimationFrame(step);
+      }
+
+      // Convenience: pan to center of a shape (by id or object)
+      function panToShape(shapeOrId, opts = {}) {
+        let s = shapeOrId;
+        if (typeof shapeOrId === 'string') s = shapesMap.get(shapeOrId);
+        if (!s) return;
+        // compute shape center in world coords
+        const cx = s.x + (s.w || 0) / 2;
+        const cy = s.y + (s.h || 0) / 2;
+        panTo(cx, cy, opts);
+      }      var projectName = "KnowVault";
+      const projectNameLabel = document.getElementById("projectNameLabel");
+      if (projectNameLabel) {
+        projectNameLabel.textContent = projectName;
+      }
+      const shapesData = {"mobile":[{"type":"rect","id":"screen","x":0,"y":0,"w":400,"h":1200,"fillColor":"#FFFFFF","imgColor":null,"strokeColor":"#00000000","textColor":"#FFFFFF","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"rect","x":95.06596763906589,"y":426.66394676308545,"w":225.63678355281695,"h":136.56633811189715,"fillColor":"#D145BD","imgColor":null,"strokeColor":"#00000000","textColor":"#D145BD","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":10,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"text","x":144.04980607012624,"y":480.2926633625668,"w":127.05578651000678,"h":48.81248665885721,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F1F5F7","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"HELLO THERE","textSize":20,"fontWeight":700,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"VaultHome","x":1800,"y":0,"w":400,"h":1200,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"VaultHome_List","x":1800,"y":10,"w":400,"h":50,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"VaultHome_List_txt","x":1860,"y":20,"w":200,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#A855F7","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"List","textSize":25,"fontWeight":700,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"VaultHome_Top","x":1820,"y":85,"w":480,"h":900,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"indicard_0","x":1820,"y":85,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_0","x":1830,"y":95,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_0","x":1992,"y":95,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_0","x":1992,"y":130,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_3","x":1820,"y":245,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_3","x":1830,"y":255,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_3","x":1992,"y":255,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_2","x":1992,"y":290,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_4","x":1820,"y":405,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_4","x":1830,"y":415,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_4","x":1992,"y":415,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_3","x":1992,"y":450,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_5","x":1820,"y":565,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_5","x":1830,"y":575,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_5","x":1992,"y":575,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_4","x":1992,"y":610,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_6","x":1820,"y":725,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_6","x":1830,"y":735,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_6","x":1992,"y":735,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_5","x":1992,"y":770,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_7","x":1820,"y":885,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_7","x":1830,"y":895,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_7","x":1992,"y":895,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_6","x":1992,"y":930,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"VaultHome_nav","x":1800,"y":1150,"w":400,"h":50,"fillColor":"#27272A","imgColor":null,"strokeColor":"#00000000","textColor":"#27272A","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"nav_Dashboard","x":1987.5,"y":1158,"w":25,"h":25,"fillColor":"#00000000","imgColor":"#EEEEEE","strokeColor":"#9E9E9E","textColor":"#EEEEEE","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Apps.png","graphType":null,"imgFit":"contain","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"VaultHome_Dashboard_txt","x":1804,"y":1183,"w":392,"h":15,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#EEEEEE","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Dashboard","textSize":12,"fontWeight":500,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"NoteView","x":3600,"y":0,"w":400,"h":1405,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"NoteView_Description","x":3600,"y":10,"w":400,"h":50,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"NoteView_Description_txt","x":3660,"y":20,"w":200,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#A855F7","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Description","textSize":25,"fontWeight":700,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"img_NoteView","x":3620,"y":85,"w":400,"h":350,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"txt_Not","x":3620,"y":460,"w":380,"h":50,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Title","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"txt_Not_1","x":3620,"y":535,"w":380,"h":400,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"minim et consequat do dolor dolore veniam nulla magna reprehenderit minim nostrud minim voluptate minim minim esse dolor pariatur pariatur consequat exercitation labore in tempor incididunt elit ut sit nostrud ullamco labore voluptate labore pariatur aliquip dolore incididunt dolor in eiusmod reprehenderit ipsum pariatur esse tempor minim laboris commodo amet do ipsum aliqua ea incididunt sed duis pariatur duis ut ut minim pariatur dolore labore enim consequat ipsum dolor magna veniam magna esse ea fugiat et fugiat nulla exercitation tempor et amet tempor velit voluptate pariatur commodo aliquip dolor ad dolor nostrud incididunt adipiscing laboris quis consectetur enim velit pariatur.","textSize":20,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"NoteView_crow","x":3600,"y":960,"w":400,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"btn_action_1","x":3630,"y":960,"w":150,"h":40,"fillColor":"#A855F7","imgColor":null,"strokeColor":"#00000000","textColor":"#A855F7","lineWidth":0,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"btntxt_action_1_text","x":3630,"y":970,"w":150,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"action 1","textSize":16,"fontWeight":600,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"btn_action_2","x":3800,"y":960,"w":150,"h":40,"fillColor":"#000000","imgColor":null,"strokeColor":"#00000000","textColor":"#000000","lineWidth":0,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"btntxt_action_2_text","x":3800,"y":970,"w":150,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"action 2","textSize":16,"fontWeight":600,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"txt_Not_2","x":3620,"y":1040,"w":380,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"More options","textSize":18,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"NoteView_Trending","x":3620,"y":1095,"w":550,"h":300,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"indicard_8","x":3620,"y":1120,"w":200,"h":250,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_8","x":3670,"y":1130,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_8","x":3630,"y":1238,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Title 1","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_7","x":3630,"y":1288,"w":180,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Description...","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_9","x":3830,"y":1120,"w":200,"h":250,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_9","x":3880,"y":1130,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_9","x":3840,"y":1238,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Title 1","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_8","x":3840,"y":1288,"w":180,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Description...","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_10","x":4040,"y":1120,"w":200,"h":250,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_10","x":4090,"y":1130,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_10","x":4050,"y":1238,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Title 1","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_9","x":4050,"y":1288,"w":180,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Description...","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]}]},{"type":"rect","id":"EditorScreen","x":5400,"y":0,"w":400,"h":1200,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"panel_EditorScreen","x":5400,"y":0,"w":400,"h":1200,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"txt_Edi","x":5410,"y":240,"w":380,"h":60,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Note Editor","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"indicard_2","x":5500,"y":320,"w":200,"h":200,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_2","x":5550,"y":330,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Apps.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_2","x":5510,"y":438,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Header Image","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"text","id":"rect_Note_Title","x":5425,"y":540,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Title_Labeltxt","x":5425,"y":540,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Note Title","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Note_Title_inputcontainer","x":5425,"y":560,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Title_input","x":5435,"y":560,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"rect_Category","x":5425,"y":630,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Category_Labeltxt","x":5425,"y":630,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Category","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Category_inputcontainer","x":5425,"y":650,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Category_input","x":5435,"y":650,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"rect_Creation_Date","x":5425,"y":720,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Creation_Date_Labeltxt","x":5425,"y":720,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Creation Date","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Creation_Date_inputcontainer","x":5425,"y":740,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Creation_Date_input","x":5435,"y":740,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"rect_Note_Content","x":5425,"y":810,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Content_Labeltxt","x":5425,"y":810,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Note Content","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Note_Content_inputcontainer","x":5425,"y":830,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Content_input","x":5435,"y":830,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"btn_proceed","x":5500,"y":900,"w":200,"h":40,"fillColor":"#A855F7","imgColor":null,"strokeColor":"#00000000","textColor":"#A855F7","lineWidth":0,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"btntxt_proceed_text","x":5500,"y":910,"w":200,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"proceed","textSize":16,"fontWeight":600,"isVisible":true,"fillGradient":null,"children":[]}]}]}]}],"desktop":[{"type":"rect","id":"screen","x":0,"y":0,"w":1200,"h":1200,"fillColor":"#FFFFFF","imgColor":null,"strokeColor":"#00000000","textColor":"#FFFFFF","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"rect","x":495.0659676390659,"y":426.66394676308545,"w":225.63678355281695,"h":136.56633811189715,"fillColor":"#D145BD","imgColor":null,"strokeColor":"#00000000","textColor":"#D145BD","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":10,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"text","x":544.0498060701262,"y":480.2926633625668,"w":127.05578651000678,"h":48.81248665885721,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F1F5F7","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"HELLO THERE","textSize":20,"fontWeight":700,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"VaultHome","x":1800,"y":0,"w":1200,"h":1200,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"VaultHome_List","x":1800,"y":10,"w":1200,"h":50,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"VaultHome_List_txt","x":2160,"y":10,"w":200,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#A855F7","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"List","textSize":25,"fontWeight":700,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"VaultHome_Top","x":2150,"y":85,"w":1000,"h":900,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"indicard_0","x":2150,"y":85,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_0","x":2160,"y":95,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_0","x":2322,"y":95,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_0","x":2322,"y":130,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_3","x":2150,"y":245,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_3","x":2160,"y":255,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_3","x":2322,"y":255,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_2","x":2322,"y":290,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_4","x":2150,"y":405,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_4","x":2160,"y":415,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_4","x":2322,"y":415,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_3","x":2322,"y":450,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_5","x":2150,"y":565,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_5","x":2160,"y":575,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_5","x":2322,"y":575,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_4","x":2322,"y":610,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_6","x":2150,"y":725,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_6","x":2160,"y":735,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_6","x":2322,"y":735,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_5","x":2322,"y":770,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_7","x":2150,"y":885,"w":380,"h":150,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":4,"radiusTR":4,"radiusBR":4,"radiusBL":4,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_7","x":2160,"y":895,"w":152,"h":135,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_7","x":2322,"y":895,"w":205.20000000000002,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Item","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_6","x":2322,"y":930,"w":205.20000000000002,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Price/description","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"VaultHome_nav","x":1800,"y":0,"w":300,"h":1200,"fillColor":"#27272A","imgColor":null,"strokeColor":"#00000000","textColor":"#27272A","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"nav_Dashboard","x":1820,"y":80,"w":25,"h":25,"fillColor":"#00000000","imgColor":"#EEEEEE","strokeColor":"#9E9E9E","textColor":"#EEEEEE","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Apps.png","graphType":null,"imgFit":"contain","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"VaultHome_Dashboard_txt","x":1870,"y":80,"w":250,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#EEEEEE","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Dashboard","textSize":22,"fontWeight":500,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"NoteView","x":3600,"y":0,"w":1200,"h":1405,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"NoteView_Description","x":3600,"y":10,"w":1200,"h":50,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"NoteView_Description_txt","x":3960,"y":10,"w":200,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#A855F7","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Description","textSize":25,"fontWeight":700,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"img_NoteView","x":4000,"y":85,"w":400,"h":350,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"txt_Not","x":3900,"y":460,"w":600,"h":50,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Title","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"txt_Not_1","x":3900,"y":535,"w":600,"h":400,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"minim et consequat do dolor dolore veniam nulla magna reprehenderit minim nostrud minim voluptate minim minim esse dolor pariatur pariatur consequat exercitation labore in tempor incididunt elit ut sit nostrud ullamco labore voluptate labore pariatur aliquip dolore incididunt dolor in eiusmod reprehenderit ipsum pariatur esse tempor minim laboris commodo amet do ipsum aliqua ea incididunt sed duis pariatur duis ut ut minim pariatur dolore labore enim consequat ipsum dolor magna veniam magna esse ea fugiat et fugiat nulla exercitation tempor et amet tempor velit voluptate pariatur commodo aliquip dolor ad dolor nostrud incididunt adipiscing laboris quis consectetur enim velit pariatur.","textSize":20,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"NoteView_crow","x":3600,"y":960,"w":1200,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"btn_action_1","x":4030,"y":960,"w":150,"h":40,"fillColor":"#A855F7","imgColor":null,"strokeColor":"#00000000","textColor":"#A855F7","lineWidth":0,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"btntxt_action_1_text","x":4030,"y":970,"w":150,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"action 1","textSize":16,"fontWeight":600,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"btn_action_2","x":4200,"y":960,"w":150,"h":40,"fillColor":"#000000","imgColor":null,"strokeColor":"#00000000","textColor":"#000000","lineWidth":0,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"btntxt_action_2_text","x":4200,"y":970,"w":150,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"action 2","textSize":16,"fontWeight":600,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"txt_Not_2","x":3900,"y":1040,"w":600,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"More options","textSize":18,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"NoteView_Trending","x":3700,"y":1095,"w":1000,"h":300,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"indicard_8","x":3700,"y":1120,"w":200,"h":250,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_8","x":3750,"y":1130,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_8","x":3710,"y":1238,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Title 1","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_7","x":3710,"y":1288,"w":180,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Description...","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_9","x":3910,"y":1120,"w":200,"h":250,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_9","x":3960,"y":1130,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_9","x":3920,"y":1238,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Title 1","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_8","x":3920,"y":1288,"w":180,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Description...","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"rect","id":"indicard_10","x":4120,"y":1120,"w":200,"h":250,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_10","x":4170,"y":1130,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Picture.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_10","x":4130,"y":1238,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Title 1","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"subtitle_9","x":4130,"y":1288,"w":180,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Description...","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]}]},{"type":"rect","id":"EditorScreen","x":5400,"y":0,"w":1200,"h":1200,"fillColor":"#18181B","imgColor":null,"strokeColor":"#00000000","textColor":"#18181B","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"panel_EditorScreen","x":5400,"y":0,"w":1200,"h":1200,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"txt_Edi","x":5810,"y":240,"w":380,"h":60,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Note Editor","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"indicard_2","x":5900,"y":320,"w":200,"h":200,"fillColor":"#00000000","imgColor":null,"strokeColor":"#00000000","textColor":"#00000000","lineWidth":0,"radiusTL":10,"radiusTR":10,"radiusBR":10,"radiusBL":10,"elevation":5,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"rect","id":"img_2","x":5950,"y":330,"w":100,"h":100,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"images/placeholders/Apps.png","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"text","id":"title_2","x":5910,"y":438,"w":180,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"Header Image","textSize":30,"fontWeight":800,"isVisible":true,"fillGradient":null,"children":[]}]},{"type":"text","id":"rect_Note_Title","x":5825,"y":540,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Title_Labeltxt","x":5825,"y":540,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Note Title","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Note_Title_inputcontainer","x":5825,"y":560,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Title_input","x":5835,"y":560,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"rect_Category","x":5825,"y":630,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Category_Labeltxt","x":5825,"y":630,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Category","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Category_inputcontainer","x":5825,"y":650,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Category_input","x":5835,"y":650,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"rect_Creation_Date","x":5825,"y":720,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Creation_Date_Labeltxt","x":5825,"y":720,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Creation Date","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Creation_Date_inputcontainer","x":5825,"y":740,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Creation_Date_input","x":5835,"y":740,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"text","id":"rect_Note_Content","x":5825,"y":810,"w":350,"h":70,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#00000000","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Lorem Ipsum","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Content_Labeltxt","x":5825,"y":810,"w":200,"h":20,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F596","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"Note Content","textSize":15,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]},{"type":"rect","id":"Note_Content_inputcontainer","x":5825,"y":830,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#A855F7","textColor":"#00000000","lineWidth":1,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"Note_Content_input","x":5835,"y":830,"w":340,"h":40,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#F4F4F5","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":25,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[]}]}]},{"type":"rect","id":"btn_proceed","x":5900,"y":900,"w":200,"h":40,"fillColor":"#A855F7","imgColor":null,"strokeColor":"#00000000","textColor":"#A855F7","lineWidth":0,"radiusTL":5,"radiusTR":5,"radiusBR":5,"radiusBL":5,"elevation":2,"img":"","graphType":null,"imgFit":"cover","textAlign":"start","text":"","textSize":20,"fontWeight":400,"isVisible":true,"fillGradient":null,"children":[{"type":"text","id":"btntxt_proceed_text","x":5900,"y":910,"w":200,"h":30,"fillColor":"#00000000","imgColor":null,"strokeColor":"#9E9E9E","textColor":"#FFFFFF","lineWidth":0.1,"radiusTL":0,"radiusTR":0,"radiusBR":0,"radiusBL":0,"elevation":0,"img":"","graphType":null,"imgFit":"cover","textAlign":"center","text":"proceed","textSize":16,"fontWeight":600,"isVisible":true,"fillGradient":null,"children":[]}]}]}]}]};
+      initAllShapes('mobile');
+</script>
+</body>
+</html>
+    
